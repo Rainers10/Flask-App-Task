@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.css">
+</head>
+<body>
+    <div class="ui menu">
+        <div class="header item">App</div>
+        <div class="right menu">
+            {% if current_user.is_authenticated %}
+                <div class="item">Hello, {{ current_user.username }}</div>
+                <a class="item" href="{{ url_for('logout') }}">Logout</a>
+            {% else %}
+                <a class="item" href="{{ url_for('login') }}">Login</a>
+                <a class="item" href="{{ url_for('register') }}">Sign Up</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="ui container">
+        <h2 class="ui header">Datorium Flask App</h2>
+    </div>
+</body>
+</html>
