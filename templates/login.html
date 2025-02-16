@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.css">
+</head>
+<body>
+
+    <div class="ui container" style="max-width: 400px; margin-top: 50px;">
+        <h2 class="ui header">Login</h2>
+        <form class="ui form" method="POST">
+            <div class="field">
+                <label>Username</label>
+                <input type="text" name="username" required>
+            </div>
+            <div class="field">
+                <label>Password</label>
+                <input type="password" name="password" required>
+            </div>
+            <button class="ui button primary" type="submit">Login</button>
+        </form>
+        <div style="margin-top: 10px;">
+            Don't have an account? <a href="{{ url_for('register') }}">Sign up</a>
+        </div>
+    </div>
+
+</body>
+</html>
