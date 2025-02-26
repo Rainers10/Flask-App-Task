@@ -1,44 +1,50 @@
-from flask import Flask, render_template, redirect, url_for, request, flash
-from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from werkzeug.security import generate_password_hash, check_password_hash
+from flask import Flask, render_template, request, redirect, url_for, flash, session
+import sqlite3
+import os
+import uuid
+from werkzeug.utils import secure_filename
+from config import Config
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'Very_Secret_Key'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
-db = SQLAlchemy(app)
-login_manager = LoginManager(app)
-login_manager.login_view = 'login'
+app.config.from_object(Config)
 
-class User(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(150), unique=True, nullable=False)
-    password_hash = db.Column(db.String(150), nullable=False)
+UPLOAD_FOLDER = 'static/uploads'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-    def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
+def get_db_connection():
+    conn = sqlite3.connect('instance/database.db')
+    conn.row_factory = sqlite3.Row
+    return conn
 
-@login_manager.user_loader
-def load_user(user_id):
-    return User.query.get(int(user_id))
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def generate_random_filename(filename):
+    ext = filename.rsplit('.', 1)[1].lower()
+    random_id = uuid.uuid4().hex
+    random_filename = f"{random_id}.{ext}"
+    return random_filename
 
 @app.route('/')
-def home():
-    return render_template('home.html')
+def index():
+    if 'username' in session:
+        return redirect(url_for('dashboard'))
+    return render_template('index.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        user = User.query.filter_by(username=username).first()
-        if user and user.check_password(password):
-            login_user(user)
-            return redirect(url_for('home'))
-        flash('Invalid credentials, please try again.', 'danger')
+        conn = get_db_connection()
+        user = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
+        conn.close()
+        if user and user['password'] == password:
+            session['username'] = username
+            return redirect(url_for('dashboard'))
+        flash('Invalid username or password')
     return render_template('login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -46,28 +52,149 @@ def register():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        if User.query.filter_by(username=username).first():
-            flash('Username already exists!', 'danger')
-        else:
-            new_user = User(username=username)
-            new_user.set_password(password)
-            db.session.add(new_user)
-            db.session.commit()
-            login_user(new_user)
-            flash('Registration successful!', 'success')
-            return redirect(url_for('home'))
+        conn = get_db_connection()
+        try:
+            conn.execute('INSERT INTO users (username, password) VALUES (?, ?)', (username, password))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            flash('Username already exists')
+            return redirect(url_for('register'))
+        conn.close()
+        return redirect(url_for('login'))
     return render_template('register.html')
 
-@app.route('/logout')
-@login_required
-def logout():
-    logout_user()
-    flash('You have been logged out.', 'info')
-    return redirect(url_for('home'))
+@app.route('/dashboard')
+def dashboard():
+    if 'username' not in session:
+        return redirect(url_for('login'))
 
+    conn = get_db_connection()
+    user = conn.execute('SELECT id FROM users WHERE username = ?', (session['username'],)).fetchone()
+    cars = conn.execute('SELECT * FROM cars WHERE user_id = ?', (user['id'],)).fetchall()
+    conn.close()
+
+    return render_template('dashboard.html', username=session['username'], cars=cars)
+
+@app.route('/register_car', methods=['GET', 'POST'])
+def register_car():
+    if 'username' not in session:
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        make = request.form['make']
+        model = request.form['model']
+        year = request.form['year']
+        image = request.files['image']
+
+        image_path = None
+        if image and allowed_file(image.filename):
+            filename = secure_filename(image.filename)
+            random_filename = generate_random_filename(filename)
+            image_path = os.path.join(app.config['UPLOAD_FOLDER'], random_filename)
+            image.save(image_path)
+            image_path = random_filename
+
+        conn = get_db_connection()
+        user = conn.execute('SELECT id FROM users WHERE username = ?', (session['username'],)).fetchone()
+        conn.execute('''
+            INSERT INTO cars (user_id, make, model, year, image_path)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (user['id'], make, model, year, image_path))
+        conn.commit()
+        conn.close()
+
+        flash('Car registered successfully!')
+        return redirect(url_for('dashboard'))
+
+    return render_template('register_car.html')
+
+@app.route('/add_fuel_entry', methods=['GET', 'POST'])
+def add_fuel_entry():
+    if 'username' not in session:
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    user = conn.execute('SELECT id FROM users WHERE username = ?', (session['username'],)).fetchone()
+    cars = conn.execute('SELECT * FROM cars WHERE user_id = ?', (user['id'],)).fetchall()
+
+    if request.method == 'POST':
+        car_id = request.form['car_id']
+        mileage = request.form['mileage']
+        fuel_amount_liters = request.form['fuel_amount_liters']
+
+        conn.execute('''
+            INSERT INTO fuel_entries (car_id, mileage, fuel_amount_liters)
+            VALUES (?, ?, ?)
+        ''', (car_id, mileage, fuel_amount_liters))
+        conn.commit()
+        conn.close()
+
+        flash('Fuel entry added successfully!')
+        return redirect(url_for('dashboard'))
+
+    conn.close()
+    return render_template('add_fuel_entry.html', cars=cars)
+
+@app.route('/car/<int:car_id>')
+def car_details(car_id):
+    if 'username' not in session:
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    car = conn.execute('SELECT * FROM cars WHERE id = ?', (car_id,)).fetchone()
+    fuel_entries = conn.execute('''
+        SELECT * FROM fuel_entries WHERE car_id = ? ORDER BY mileage
+    ''', (car_id,)).fetchall()
+    conn.close()
+
+    return render_template('car_details.html', car=car, fuel_entries=fuel_entries)
+
+@app.route('/car/<int:entry_id>/edit_fuel_entry', methods=['GET', 'POST'])
+def edit_fuel_entry(entry_id):
+    if 'username' not in session:
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    entry = conn.execute('SELECT * FROM fuel_entries WHERE id = ?', (entry_id,)).fetchone()
+
+    if request.method == 'POST':
+        mileage = request.form['mileage']
+        fuel_amount_liters = request.form['fuel_amount_liters']
+
+        conn.execute('''
+            UPDATE fuel_entries
+            SET mileage = ?, fuel_amount_liters = ?
+            WHERE id = ?
+        ''', (mileage, fuel_amount_liters, entry_id))
+        conn.commit()
+        conn.close()
+
+        flash('Fuel entry updated successfully!')
+        return redirect(url_for('car_details', car_id=entry['car_id']))
+
+    conn.close()
+    return render_template('edit_fuel_entry.html', entry=entry)
+
+@app.route('/car/<int:entry_id>/delete_fuel_entry', methods=['POST'])
+def delete_fuel_entry(entry_id):
+    if 'username' not in session:
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    entry = conn.execute('SELECT * FROM fuel_entries WHERE id = ?', (entry_id,)).fetchone()
+    conn.execute('DELETE FROM fuel_entries WHERE id = ?', (entry_id,))
+    conn.commit()
+    conn.close()
+
+    flash('Fuel entry deleted successfully!')
+    return redirect(url_for('car_details', car_id=entry['car_id']))
+
+@app.route('/logout')
+def logout():
+    session.pop('username', None)
+    return redirect(url_for('index'))
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
+    if not os.path.exists(UPLOAD_FOLDER):
+        os.makedirs(UPLOAD_FOLDER)
     app.run(debug=True)
-
