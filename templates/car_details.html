@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ car.make }} {{ car.model }} - Fuel Tracker</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="container mt-5">
+    <h1 class="text-center">{{ car.make }} {{ car.model }}</h1>
+    <p class="text-center">Year: {{ car.year }}</p>
+
+    <div class="text-center mb-4">
+        <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Go Back</a>
+        <a href="{{ url_for('add_fuel_entry', car_id=car.id) }}" class="btn btn-primary">Add Fuel Entry</a>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            {% if car.image_path %}
+            <img src="{{ url_for('static', filename='uploads/' + car.image_path) }}" class="card-img-top"
+                alt="{{ car.make }} {{ car.model }}">
+            {% else %}
+            <img src="{{ url_for('static', filename='images/car_placeholder.png') }}" class="card-img-top"
+                alt="{{ car.make }} {{ car.model }}">
+            {% endif %}
+        </div>
+
+        <div class="col-md-6">
+            <div class="mb-3">
+                <button id="toggle-graph" class="btn btn-primary">Show Graph</button>
+                <button id="toggle-table" class="btn btn-secondary">Show Table</button>
+                <a href="{{ url_for('download_csv', car_id=car.id) }}" class="btn btn-success">Download CSV</a>
+            </div>
+
+            <div id="graph-section">
+                <canvas id="fuelEconomyChart"></canvas>
+            </div>
+
+            <div id="table-section" style="display: none;">
+                <form method="POST" action="{{ url_for('delete_fuel_entries', car_id=car.id) }}">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Select</th>
+                                <th>Mileage (km)</th>
+                                <th>Fuel (L)</th>
+                                <th>Economy (km/L)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for i in range(1, fuel_entries|length) %}
+                            <tr>
+                                <td>
+                                    <input type="checkbox" name="entry_ids" value="{{ fuel_entries[i].id }}">
+                                </td>
+                                <td>{{ fuel_entries[i].mileage }}</td>
+                                <td>{{ fuel_entries[i - 1].fuel_amount_liters }}</td>
+                                <td>
+                                    {% if fuel_entries[i - 1].fuel_amount_liters > 0 %}
+                                        {{ ((fuel_entries[i].mileage - fuel_entries[i - 1].mileage) / fuel_entries[i - 1].fuel_amount_liters)|round(2) }}
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="text-center">Not enough data to calculate economy.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    <button type="submit" class="btn btn-danger">Delete Selected Entries</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('toggle-graph').addEventListener('click', function (event) {
+            event.preventDefault();
+            document.getElementById('graph-section').style.display = 'block';
+            document.getElementById('table-section').style.display = 'none';
+        });
+
+        document.getElementById('toggle-table').addEventListener('click', function (event) {
+            event.preventDefault();
+            document.getElementById('graph-section').style.display = 'none';
+            document.getElementById('table-section').style.display = 'block';
+        });
+
+        // Chart.js for fuel economy graph
+        const ctx = document.getElementById('fuelEconomyChart').getContext('2d');
+        const fuelEconomyChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [
+                    {% for entry in fuel_entries %}
+                        {{ entry.mileage }},
+                    {% endfor %}
+                ],
+                datasets: [{
+                    label: 'Fuel Economy (km/L)',
+                    data: [
+                        {% for i in range(1, fuel_entries|length) %}
+                            {% if fuel_entries[i - 1].fuel_amount_liters > 0 %}
+                                {{ ((fuel_entries[i].mileage - fuel_entries[i - 1].mileage) / fuel_entries[i - 1].fuel_amount_liters)|round(2) }},
+                            {% else %}
+                                0,
+                            {% endif %}
+                        {% endfor %}
+                    ],
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Mileage (km)'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Economy (km/L)'
+                        },
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
