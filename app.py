@@ -8,7 +8,7 @@ import csv
 from io import StringIO
 import pandas as pd
 import matplotlib
-matplotlib.use('Agg')
+matplotlib.use('Agg') #Only for MacOS (from experience macos does not support matplotlib GUI)
 import matplotlib.pyplot as plt
 
 app = Flask(__name__)
@@ -16,6 +16,10 @@ app.config.from_object(Config)
 
 def get_db_connection():
     conn = sqlite3.connect('instance/database.db')
+    conn.row_factory = sqlite3.Row
+    return conn
+def get_example_db_connection():
+    conn = sqlite3.connect('instance/example_cars.db')
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -189,19 +193,6 @@ def edit_fuel_entry(entry_id):
     conn.close()
     return render_template('edit_fuel_entry.html', entry=entry)
 
-@app.route('/car/<int:entry_id>/delete_fuel_entry', methods=['POST'])
-def delete_fuel_entry(entry_id):
-    if 'username' not in session:
-        return redirect(url_for('login'))
-
-    conn = get_db_connection()
-    entry = conn.execute('SELECT * FROM fuel_entries WHERE id = ?', (entry_id,)).fetchone()
-    conn.execute('DELETE FROM fuel_entries WHERE id = ?', (entry_id,))
-    conn.commit()
-    conn.close()
-
-    flash('Fuel entry deleted successfully!')
-    return redirect(url_for('car_details', car_id=entry['car_id']))
 
 @app.route('/logout')
 def logout():
@@ -230,8 +221,8 @@ def download_csv(car_id):
     writer.writerow(['Mileage (km)', 'Fuel (L)', 'Economy (km/L)'])
 
     for i in range(1, len(fuel_entries)):
-        mileage = fuel_entries[i]["mileage"]  # Use dictionary-style access
-        fuel = fuel_entries[i - 1]["fuel_amount_liters"]  # Use dictionary-style access
+        mileage = fuel_entries[i]["mileage"]
+        fuel = fuel_entries[i - 1]["fuel_amount_liters"]
         economy = (fuel_entries[i]["mileage"] - fuel_entries[i - 1]["mileage"]) / fuel_entries[i - 1]["fuel_amount_liters"]
         writer.writerow([mileage, fuel, round(economy, 2)])
 
@@ -243,34 +234,6 @@ def download_csv(car_id):
     )
 
     return response
-
-
-    if 'username' not in session:
-        return redirect(url_for('login'))
-
-    conn = get_db_connection()
-    user = conn.execute('SELECT id FROM users WHERE username = ?', (session['username'],)).fetchone()
-    cars = conn.execute('SELECT * FROM cars WHERE user_id = ?', (user['id'],)).fetchall()
-
-    selected_car_ids = []  # Initialize as an empty list
-    car_data = []  # Initialize as an empty list
-
-    if request.method == 'POST':
-        selected_car_ids = request.form.getlist('car_ids')  # Get selected car IDs from the form
-        selected_cars = [car for car in cars if str(car['id']) in selected_car_ids]
-
-        # Fetch fuel entries for selected cars
-        for car in selected_cars:
-            fuel_entries = conn.execute('''
-                SELECT * FROM fuel_entries WHERE car_id = ? ORDER BY mileage
-            ''', (car['id'],)).fetchall()
-            car_data.append({
-                'car': car,
-                'fuel_entries': fuel_entries
-            })
-
-    conn.close()
-    return render_template('compare_cars.html', cars=cars, car_data=car_data, selected_car_ids=selected_car_ids)
 
 
 @app.route('/compare_cars', methods=['GET', 'POST'])
@@ -304,13 +267,17 @@ def compare_cars():
             for i in range(1, len(car['fuel_entries'])):
                 km = car['fuel_entries'][i]['mileage'] - car['fuel_entries'][i - 1]['mileage']
                 liters = car['fuel_entries'][i - 1]['fuel_amount_liters']
-                economy_values.append(km / liters)
+                if liters != 0:
+                    economy_values.append(km / liters)
+                else:
+                    print(f"Warning: Zero fuel amount detected for car {car['car']} between entries {i-1} and {i}")
+                    economy_values.append(0,0)
+            
             avg_economy = sum(economy_values) / len(economy_values)
             car_economy.append({
                 'car': car['car'],
                 'avg_economy': avg_economy
             })
-
     car_economy.sort(key=lambda x: x['avg_economy'], reverse=True)
 
     if car_economy:
@@ -330,6 +297,46 @@ def compare_cars():
         chart_path = None
 
     return render_template('compare_cars.html', cars=cars, selected_car_ids=selected_car_ids, chart_path=chart_path)
+
+@app.route('/example_car/<int:car_id>')
+def example_car_details(car_id):
+    conn = get_example_db_connection()
+    car = conn.execute('SELECT * FROM cars WHERE id = ?', (car_id,)).fetchone()
+    fuel_entries = conn.execute('''
+        SELECT * FROM fuel_entries WHERE car_id = ? ORDER BY mileage
+    ''', (car_id,)).fetchall()
+    conn.close()
+
+    if not car:
+        flash('Car not found', 'danger')
+        return redirect(url_for('index'))
+
+    return render_template('example_car_details.html', car=car, fuel_entries=fuel_entries)
+
+@app.route('/car/<int:car_id>/delete_fuel_entries', methods=['POST'])
+def delete_fuel_entries(car_id):
+    if 'username' not in session:
+        return redirect(url_for('login'))
+
+    entry_ids = request.form.getlist('entry_ids')
+
+    if not entry_ids:
+        flash('No entries selected for deletion', 'warning')
+        return redirect(url_for('car_details', car_id=car_id))
+
+    conn = get_db_connection()
+    try:
+        for entry_id in entry_ids:
+            conn.execute('DELETE FROM fuel_entries WHERE id = ?', (entry_id,))
+        conn.commit()
+        flash('Selected entries deleted successfully', 'success')
+    except Exception as e:
+        conn.rollback()
+        flash('An error occurred while deleting entries', 'danger')
+    finally:
+        conn.close()
+
+    return redirect(url_for('car_details', car_id=car_id))
 
 if __name__ == '__main__':
     if not os.path.exists(app.config['UPLOAD_FOLDER']):
