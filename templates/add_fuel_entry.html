@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Fuel Entry</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="container mt-5">
+    <h1 class="text-center">Add Fuel Entry</h1>
+    <form method="POST">
+        <div class="mb-3">
+            <form method="POST" action="{{ url_for('add_fuel_entry') }}">
+                {% if not selected_car %}
+                <div class="form-group">
+                    <label for="car_id">Select Car</label>
+                    <select class="form-control" id="car_id" name="car_id" required>
+                        {% for car in cars %}
+                        <option value="{{ car.id }}">{{ car.make }} {{ car.model }} ({{ car.year }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% else %}
+                <input type="hidden" name="car_id" value="{{ selected_car.id }}">
+                {% endif %}
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="mileage" class="form-label">Mileage</label>
+            <input type="number" class="form-control" id="mileage" name="mileage" required>
+        </div>
+        <div class="mb-3">
+            <label for="fuel_amount_liters" class="form-label">Fuel Amount (Liters)</label>
+            <input type="number" step="0.01" class="form-control" id="fuel_amount_liters" name="fuel_amount_liters" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Submit</button>
+        <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Cancel</a>
+    </form>
+</body>
+</html>
