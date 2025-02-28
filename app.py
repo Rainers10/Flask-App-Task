@@ -271,7 +271,7 @@ def compare_cars():
                     economy_values.append(km / liters)
                 else:
                     print(f"Warning: Zero fuel amount detected for car {car['car']} between entries {i-1} and {i}")
-                    economy_values.append(0,0)
+                    economy_values.extend([0, 0])
             
             avg_economy = sum(economy_values) / len(economy_values)
             car_economy.append({
