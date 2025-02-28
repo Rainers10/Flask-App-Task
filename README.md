@@ -7,4 +7,4 @@ Launching the actual enviroment:
 	Windows
 		`call venv/Scripts/activate`
 Pip install requirement.txt file for the required packages.
-Before running the app.py ==run dbcreate.py to create required databases==.
+Before running the app.py run dbcreate.py to create required databases.
