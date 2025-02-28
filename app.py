@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, render_template, request, redirect, url_for, flash, session, get_flashes_messages
 import sqlite3
 import os
 import uuid
@@ -39,6 +39,7 @@ def index():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    get_flashes_messages()
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
@@ -61,6 +62,7 @@ def login():
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
+    get_flashes_messages()
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
